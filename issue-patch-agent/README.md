@@ -7,6 +7,7 @@ An inspectable skeleton for an Agent that will eventually turn a GitHub Issue in
 - FastAPI service with `GET /health` and `POST /tasks`
 - Pydantic domain models: `Task`, `Plan`, `ToolCall`, and `PatchResult`
 - In-memory task service and explicit Agent workflow states
+- Disposable git worktrees, scoped code search/file reads, diffs, and allowlisted pytest execution
 - CLI that prints `queued → analyzing → retrieving → planning → patching → testing → reporting → completed`
 - Unit tests, Docker image definition, and GitHub Actions CI
 
@@ -39,4 +40,4 @@ python -m pytest -q
 
 ## Security boundary
 
-This version only stores task metadata in memory and prints simulated workflow stages. It does not inspect a repository, write files, execute the provided test command, call a model, push commits, or create pull requests.
+This version only stores task metadata in memory and prints simulated workflow stages. Repository tools operate only in a temporary git worktree; they never write to the source checkout. Test execution is restricted to `pytest` and `python -m pytest`, has a timeout, and does not invoke a shell. It still does not call a model, push commits, or create pull requests.
