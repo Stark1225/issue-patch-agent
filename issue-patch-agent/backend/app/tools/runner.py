@@ -3,6 +3,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from backend.app.tools.repository import WorktreeManager
 
 class CommandNotAllowedError(ValueError):
     """Raised when a task asks to execute a command outside the explicit allowlist."""
@@ -23,11 +24,20 @@ class TestRunner:
     __test__ = False
     _ALLOWED_PREFIXES = (("pytest",), ("python", "-m", "pytest"))
 
-    def __init__(self, *, timeout_seconds: int = 60, max_output_chars: int = 20_000) -> None:
+    def __init__(
+        self,
+        worktree_manager: WorktreeManager,
+        *,
+        timeout_seconds: int = 60,
+        max_output_chars: int = 20_000,
+    ) -> None:
+        self.worktree_manager = worktree_manager
         self.timeout_seconds = timeout_seconds
         self.max_output_chars = max_output_chars
 
     def run(self, repository: Path, command_text: str) -> CommandResult:
+        if not self.worktree_manager.owns(repository):
+            raise CommandNotAllowedError("Tests can only run inside a managed worktree")
         command = tuple(shlex.split(command_text))
         if not command or not self._is_allowed(command):
             raise CommandNotAllowedError(

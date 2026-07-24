@@ -1,6 +1,8 @@
 import shutil
+import select
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 
@@ -15,15 +17,24 @@ class WorktreeManager:
         self._run_git(source, "rev-parse", "--is-inside-work-tree")
         temporary_root = Path(tempfile.mkdtemp(prefix="issue-patch-agent-"))
         worktree = temporary_root / "workspace"
-        self._run_git(source, "worktree", "add", "--detach", str(worktree), "HEAD")
-        self._sources[worktree] = source
-        return worktree
+        try:
+            self._run_git(source, "worktree", "add", "--detach", str(worktree), "HEAD")
+        except Exception:
+            shutil.rmtree(temporary_root, ignore_errors=True)
+            raise
+        resolved_worktree = worktree.resolve()
+        self._sources[resolved_worktree] = source
+        return resolved_worktree
+
+    def owns(self, worktree: Path) -> bool:
+        return worktree.resolve() in self._sources
 
     def cleanup(self, worktree: Path) -> None:
         resolved_worktree = worktree.resolve()
         source = self._sources.pop(resolved_worktree, None)
-        if source is not None:
-            self._run_git(source, "worktree", "remove", "--force", str(resolved_worktree))
+        if source is None:
+            raise ValueError("Can only clean up a managed worktree")
+        self._run_git(source, "worktree", "remove", "--force", str(resolved_worktree))
         shutil.rmtree(resolved_worktree.parent, ignore_errors=True)
 
     @staticmethod
@@ -42,25 +53,65 @@ class WorktreeManager:
 class RepositoryTools:
     """Read-only inspection helpers plus diff retrieval, scoped to one worktree."""
 
-    def __init__(self, root: Path, *, max_file_bytes: int = 100_000) -> None:
+    def __init__(
+        self,
+        root: Path,
+        *,
+        max_file_bytes: int = 100_000,
+        search_timeout_seconds: int = 10,
+        max_diff_chars: int = 100_000,
+    ) -> None:
         self.root = root.resolve()
         self.max_file_bytes = max_file_bytes
+        self.search_timeout_seconds = search_timeout_seconds
+        self.max_diff_chars = max_diff_chars
 
     def search(self, query: str, *, max_results: int = 20) -> list[str]:
-        result = subprocess.run(
-            ["rg", "--files-with-matches", "--glob", "!**/.git/**", "--", query, str(self.root)],
-            check=False,
-            capture_output=True,
+        process = subprocess.Popen(
+            [
+                "rg",
+                "--files-with-matches",
+                "--max-count=1",
+                "--glob",
+                "!**/.git/**",
+                "--",
+                query,
+                str(self.root),
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
         )
-        if result.returncode == 1:
-            return []
-        if result.returncode != 0:
-            raise RuntimeError(result.stderr.strip() or "Code search failed")
-        return [
-            str(Path(line).resolve().relative_to(self.root))
-            for line in result.stdout.splitlines()[:max_results]
-        ]
+        assert process.stdout is not None
+        deadline = time.monotonic() + self.search_timeout_seconds
+        matches: list[str] = []
+        try:
+            while True:
+                if len(matches) == max_results:
+                    process.terminate()
+                    process.communicate()
+                    return matches
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("Code search timed out")
+                ready, _, _ = select.select([process.stdout], [], [], remaining)
+                if not ready:
+                    raise TimeoutError("Code search timed out")
+                line = process.stdout.readline()
+                if not line:
+                    break
+                matches.append(str(Path(line.strip()).resolve().relative_to(self.root)))
+        except TimeoutError:
+            process.kill()
+            process.communicate()
+            raise
+        finally:
+            if process.poll() is None:
+                process.terminate()
+        _, stderr = process.communicate()
+        if process.returncode not in (0, 1):
+            raise RuntimeError(stderr.strip() or "Code search failed")
+        return matches
 
     def read_text(self, relative_path: str) -> str:
         candidate = (self.root / relative_path).resolve()
@@ -75,12 +126,18 @@ class RepositoryTools:
         return candidate.read_text(encoding="utf-8")
 
     def diff(self) -> str:
-        result = subprocess.run(
-            ["git", "-C", str(self.root), "diff", "--no-ext-diff"],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
+        try:
+            result = subprocess.run(
+                ["git", "-C", str(self.root), "diff", "--no-ext-diff"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=self.search_timeout_seconds,
+            )
+        except subprocess.TimeoutExpired as error:
+            raise TimeoutError("Git diff timed out") from error
         if result.returncode != 0:
             raise RuntimeError(result.stderr.strip() or "Unable to read Git diff")
+        if len(result.stdout) > self.max_diff_chars:
+            raise ValueError("Git diff exceeds the configured size limit")
         return result.stdout

@@ -57,13 +57,32 @@ def test_worktree_tools_do_not_modify_the_source_repository(source_repository: P
 def test_test_runner_rejects_unapproved_commands_and_runs_pytest(
     source_repository: Path,
 ) -> None:
-    runner = TestRunner(timeout_seconds=10)
+    manager = WorktreeManager()
+    worktree = manager.create(source_repository)
+    runner = TestRunner(manager, timeout_seconds=10)
 
-    with pytest.raises(CommandNotAllowedError):
-        runner.run(source_repository, "rm -rf /tmp/anything")
+    try:
+        with pytest.raises(CommandNotAllowedError):
+            runner.run(worktree, "rm -rf /tmp/anything")
 
-    result = runner.run(source_repository, "pytest -q test_smoke.py")
+        with pytest.raises(CommandNotAllowedError, match="managed worktree"):
+            runner.run(source_repository, "pytest -q test_smoke.py")
+
+        result = runner.run(worktree, "pytest -q test_smoke.py")
+    finally:
+        manager.cleanup(worktree)
 
     assert result.exit_code == 0
     assert result.timed_out is False
     assert "1 passed" in result.stdout
+
+
+def test_worktree_manager_refuses_to_clean_an_unmanaged_path(tmp_path: Path) -> None:
+    unmanaged_parent = tmp_path / "unmanaged"
+    unmanaged_worktree = unmanaged_parent / "workspace"
+    unmanaged_worktree.mkdir(parents=True)
+
+    with pytest.raises(ValueError, match="managed"):
+        WorktreeManager().cleanup(unmanaged_worktree)
+
+    assert unmanaged_parent.exists()
