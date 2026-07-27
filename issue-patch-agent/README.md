@@ -1,16 +1,16 @@
 # IssuePatch Agent
 
-An inspectable skeleton for an Agent that will eventually turn a GitHub Issue into a tested patch. The first week deliberately contains no LLM calls, repository writes, or command execution.
+An inspectable Agent that turns a repository issue description into a reviewable patch proposal and test report. It works in a disposable Git worktree, so it never changes source working-tree files.
 
-## Included in week one
+## Included
 
 - FastAPI service with `GET /health` and `POST /tasks`
 - Pydantic domain models: `Task`, `Plan`, `ToolCall`, and `PatchResult`
 - In-memory task service and explicit Agent workflow states
 - Disposable git worktrees, scoped code search/file reads, diffs, and allowlisted pytest execution
 - `POST /tasks/{id}/run` orchestration with a plan, tool-call log, and test report
-- CLI that prints `queued → analyzing → retrieving → planning → patching → testing → reporting → completed`
-- Unit tests, Docker image definition, and GitHub Actions CI
+- Optional DeepSeek-powered unified diff generation
+- React task dashboard, Docker Compose deployment definition, and unit tests
 
 ## Run locally
 
@@ -58,6 +58,30 @@ npm run dev
 
 Open the URL Vite prints (normally `http://localhost:5173`). The development proxy forwards `/api` requests to the local backend.
 
+## Run with Docker Compose
+
+Install and start Docker Desktop first. Docker Compose will run the backend and dashboard together. The Agent needs access to the repositories it analyzes, so mount the **parent directory** that contains your target Git repositories:
+
+```bash
+export HOST_REPOSITORIES_DIR="/absolute/path/to/your/repositories"
+export DEEPSEEK_API_KEY="..."
+docker compose up --build
+```
+
+Then open `http://localhost:8080`.
+
+In the dashboard, repository paths must use the path inside the container. For example, if the host repository is `/Users/name/projects/demo-repo` and `HOST_REPOSITORIES_DIR=/Users/name/projects`, enter:
+
+```text
+/repositories/demo-repo
+```
+
+The mount is writable because Git creates and removes temporary worktrees. Keep `DEEPSEEK_API_KEY` in your terminal environment or a local untracked `.env` file; never commit it. Stop the services with:
+
+```bash
+docker compose down
+```
+
 ## Test
 
 ```bash
@@ -66,4 +90,4 @@ python -m pytest -q
 
 ## Security boundary
 
-This version only stores task metadata in memory and prints simulated workflow stages. Repository tools operate only in a temporary git worktree; they never write to the source checkout. Test execution is restricted to `pytest` and `python -m pytest`, has a timeout, and does not invoke a shell. It still does not call a model, push commits, or create pull requests.
+Tasks are stored only in memory. Repository tools operate only in a temporary Git worktree; they never write to source working-tree files, though Git temporarily updates repository metadata while managing worktrees. Test execution is restricted to `pytest` and `python -m pytest`, has a timeout, and does not invoke a shell. The Agent does not push commits or create pull requests.
