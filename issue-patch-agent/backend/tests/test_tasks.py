@@ -28,3 +28,16 @@ def test_create_task_requires_all_agent_inputs() -> None:
     response = client.post("/tasks", json={"issue": "修复登录失败"})
 
     assert response.status_code == 422
+
+
+def test_local_frontend_origin_is_allowed_to_create_tasks() -> None:
+    response = TestClient(app).options(
+        "/tasks",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"

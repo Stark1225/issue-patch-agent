@@ -54,6 +54,23 @@ def test_worktree_tools_do_not_modify_the_source_repository(source_repository: P
         manager.cleanup(worktree)
 
 
+def test_repository_tools_fall_back_when_ripgrep_is_unavailable(
+    source_repository: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manager = WorktreeManager()
+    worktree = manager.create(source_repository)
+    tools = RepositoryTools(worktree)
+    try:
+        with monkeypatch.context() as context:
+            context.setattr(
+                "backend.app.tools.repository.subprocess.Popen",
+                lambda *_args, **_kwargs: (_ for _ in ()).throw(FileNotFoundError()),
+            )
+            assert tools.search("def health") == ["src/app.py"]
+    finally:
+        manager.cleanup(worktree)
+
+
 def test_test_runner_rejects_unapproved_commands_and_runs_pytest(
     source_repository: Path,
 ) -> None:

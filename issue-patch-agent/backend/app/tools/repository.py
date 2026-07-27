@@ -67,21 +67,24 @@ class RepositoryTools:
         self.max_diff_chars = max_diff_chars
 
     def search(self, query: str, *, max_results: int = 20) -> list[str]:
-        process = subprocess.Popen(
-            [
-                "rg",
-                "--files-with-matches",
-                "--max-count=1",
-                "--glob",
-                "!**/.git/**",
-                "--",
-                query,
-                str(self.root),
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
+        try:
+            process = subprocess.Popen(
+                [
+                    "rg",
+                    "--files-with-matches",
+                    "--max-count=1",
+                    "--glob",
+                    "!**/.git/**",
+                    "--",
+                    query,
+                    str(self.root),
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+        except FileNotFoundError:
+            return self._search_with_python(query, max_results)
         assert process.stdout is not None
         deadline = time.monotonic() + self.search_timeout_seconds
         matches: list[str] = []
@@ -111,6 +114,23 @@ class RepositoryTools:
         _, stderr = process.communicate()
         if process.returncode not in (0, 1):
             raise RuntimeError(stderr.strip() or "Code search failed")
+        return matches
+
+    def _search_with_python(self, query: str, max_results: int) -> list[str]:
+        matches: list[str] = []
+        for candidate in self.root.rglob("*"):
+            if ".git" in candidate.parts or not candidate.is_file():
+                continue
+            if candidate.stat().st_size > self.max_file_bytes:
+                continue
+            try:
+                contents = candidate.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                continue
+            if query in contents:
+                matches.append(str(candidate.relative_to(self.root)))
+                if len(matches) == max_results:
+                    break
         return matches
 
     def read_text(self, relative_path: str) -> str:

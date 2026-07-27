@@ -46,6 +46,18 @@ issue-patch-agent run \
   --test-command "pytest -q"
 ```
 
+## Run the frontend locally
+
+In a second terminal, after starting the FastAPI backend on port 8000:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open the URL Vite prints (normally `http://localhost:5173`). The development proxy forwards `/api` requests to the local backend.
+
 ## Test
 
 ```bash
