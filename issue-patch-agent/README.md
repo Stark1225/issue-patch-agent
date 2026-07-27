@@ -24,7 +24,18 @@ uvicorn backend.app.main:app --reload
 
 Open `http://127.0.0.1:8000/docs` to call the API.
 
-Create a task with `POST /tasks`, then call `POST /tasks/{id}/run`. The default deterministic planner retrieves files and emits a reviewable plan. It intentionally never writes a patch; a model-backed patch writer is the next stage.
+Create a task with `POST /tasks`, then call `POST /tasks/{id}/run`. The default deterministic planner retrieves files and emits a reviewable plan without changing code.
+
+## Generate a patch for review
+
+Set credentials in the shell that starts the server; never commit them:
+
+```bash
+export OPENAI_API_KEY="..."
+export OPENAI_MODEL="your-supported-model"
+```
+
+Call `POST /tasks/{id}/run?generate_patch=true`. The model may only return a unified diff. The service validates its paths, applies it only to a disposable worktree, runs the allowlisted tests there, and returns the diff and results. The source repository is never modified.
 
 ## Run the CLI
 

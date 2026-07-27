@@ -1,0 +1,121 @@
+import subprocess
+from pathlib import Path
+
+import pytest
+
+from backend.app.services.patch_generator import (
+    DiffValidationError,
+    DiffValidator,
+    OpenAIPatchGenerator,
+)
+from backend.app.services.task_service import TaskService
+from backend.app.services.workflow_service import WorkflowService
+
+
+class FakePatchGenerator:
+    def generate(self, *, issue: str, plan_steps: list[str], files: dict[str, str]) -> str:
+        return """diff --git a/health.py b/health.py
+--- a/health.py
++++ b/health.py
+@@ -1,2 +1,2 @@
+ def health():
+-    return 'ok'
++    return 'ready'
+diff --git a/test_health.py b/test_health.py
+--- a/test_health.py
++++ b/test_health.py
+@@ -1,4 +1,4 @@
+ from health import health
+
+ def test_health():
+-    assert health() == 'ok'
++    assert health() == 'ready'
+"""
+
+
+def create_repository(tmp_path: Path) -> Path:
+    repository = tmp_path / "patch-repository"
+    repository.mkdir()
+    subprocess.run(["git", "init", str(repository)], check=True, capture_output=True)
+    (repository / "health.py").write_text("def health():\n    return 'ok'\n")
+    (repository / "test_health.py").write_text("from health import health\n\ndef test_health():\n    assert health() == 'ok'\n")
+    subprocess.run(["git", "-C", str(repository), "add", "."], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repository),
+            "-c",
+            "user.name=IssuePatch Test",
+            "-c",
+            "user.email=issuepatch@example.com",
+            "commit",
+            "-m",
+            "initial commit",
+        ],
+        check=True,
+        capture_output=True,
+    )
+    return repository
+
+
+class FakeResponses:
+    def __init__(self) -> None:
+        self.request: dict[str, str] | None = None
+
+    def create(self, *, model: str, input: str):
+        self.request = {"model": model, "input": input}
+        return type("Response", (), {"output_text": "```diff\ndiff --git a/app.py b/app.py\n```"})()
+
+
+class FakeOpenAIClient:
+    def __init__(self) -> None:
+        self.responses = FakeResponses()
+
+
+def test_openai_patch_generator_uses_responses_api_and_removes_a_code_fence() -> None:
+    client = FakeOpenAIClient()
+    generator = OpenAIPatchGenerator(model="configured-model", client=client)
+
+    diff = generator.generate(
+        issue="Fix the health response",
+        plan_steps=["Inspect health.py"],
+        files={"health.py": "def health(): return 'ok'"},
+    )
+
+    assert diff == "diff --git a/app.py b/app.py"
+    assert client.responses.request is not None
+    assert client.responses.request["model"] == "configured-model"
+    assert "health.py" in client.responses.request["input"]
+
+
+def test_workflow_applies_a_generated_diff_only_in_its_temporary_worktree(tmp_path: Path) -> None:
+    repository = create_repository(tmp_path)
+    task_service = TaskService()
+    task = task_service.create_task(
+        repository_path=str(repository),
+        issue="Change health response to ready",
+        test_command="pytest -q",
+    )
+
+    result = WorkflowService(task_service, patch_generator=FakePatchGenerator()).run(
+        task.id, generate_patch=True
+    )
+
+    assert result.task.status == "completed"
+    assert result.patch_result.diff.startswith("diff --git")
+    assert result.patch_result.applied_to_worktree is True
+    assert result.patch_result.tests_passed is True
+    assert "return 'ok'" in (repository / "health.py").read_text()
+
+
+def test_diff_validator_rejects_a_path_outside_the_worktree() -> None:
+    unsafe_diff = """diff --git a/../../outside.py b/../../outside.py
+--- a/../../outside.py
++++ b/../../outside.py
+@@ -0,0 +1 @@
++unsafe
+"""
+
+    with pytest.raises(DiffValidationError, match="outside"):
+        DiffValidator().validate(unsafe_diff)

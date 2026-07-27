@@ -2,6 +2,7 @@ import re
 from pathlib import Path
 
 from backend.app.models import PatchResult, Plan, Task, TaskStatus, ToolCall, WorkflowResult
+from backend.app.services.patch_generator import DiffApplier, DiffValidator, PatchGenerator
 from backend.app.services.task_service import TaskService
 from backend.app.tools.repository import RepositoryTools, WorktreeManager
 from backend.app.tools.runner import TestRunner
@@ -30,11 +31,12 @@ class DeterministicPlanner:
 class WorkflowService:
     """Runs the inspect-plan-test workflow while preserving the source checkout."""
 
-    def __init__(self, task_service: TaskService) -> None:
+    def __init__(self, task_service: TaskService, patch_generator: PatchGenerator | None = None) -> None:
         self.task_service = task_service
         self.planner = DeterministicPlanner()
+        self.patch_generator = patch_generator
 
-    def run(self, task_id: str) -> WorkflowResult:
+    def run(self, task_id: str, *, generate_patch: bool = False) -> WorkflowResult:
         task = self.task_service.get_task(task_id)
         calls: list[ToolCall] = []
         plan = Plan(task_id=task.id, steps=[])
@@ -57,6 +59,7 @@ class WorkflowService:
 
             self.task_service.update_status(task.id, TaskStatus.RETRIEVING)
             relevant_files: list[str] = []
+            retrieved_files: dict[str, str] = {}
             for term in self.planner.search_terms(task.issue):
                 matches = tools.search(term)
                 relevant_files.extend(match for match in matches if match not in relevant_files)
@@ -70,6 +73,7 @@ class WorkflowService:
                 )
             for relative_path in relevant_files[:3]:
                 contents = tools.read_text(relative_path)
+                retrieved_files[relative_path] = contents
                 calls.append(
                     ToolCall(
                         task_id=task.id,
@@ -83,14 +87,37 @@ class WorkflowService:
             plan = self.planner.create_plan(task, relevant_files)
 
             self.task_service.update_status(task.id, TaskStatus.PATCHING)
-            calls.append(
-                ToolCall(
-                    task_id=task.id,
-                    tool_name="prepare_patch",
-                    result="No patch writer is configured; no files were changed.",
+            if generate_patch:
+                if self.patch_generator is None:
+                    raise RuntimeError("Patch generation is not configured")
+                proposed_diff = self.patch_generator.generate(
+                    issue=task.issue,
+                    plan_steps=plan.steps,
+                    files=retrieved_files,
                 )
-            )
-            patch_result = PatchResult(task_id=task.id, diff=tools.diff())
+                DiffValidator().validate(proposed_diff, allowed_paths=set(retrieved_files))
+                DiffApplier().apply(worktree, proposed_diff)
+                patch_result = PatchResult(
+                    task_id=task.id,
+                    diff=tools.diff(),
+                    applied_to_worktree=True,
+                )
+                calls.append(
+                    ToolCall(
+                        task_id=task.id,
+                        tool_name="generate_patch",
+                        result="Validated and applied the proposed diff in the temporary worktree.",
+                    )
+                )
+            else:
+                calls.append(
+                    ToolCall(
+                        task_id=task.id,
+                        tool_name="prepare_patch",
+                        result="Patch generation was not requested; no files were changed.",
+                    )
+                )
+                patch_result = PatchResult(task_id=task.id, diff=tools.diff())
 
             self.task_service.update_status(task.id, TaskStatus.TESTING)
             command_result = TestRunner(manager).run(worktree, task.test_command)

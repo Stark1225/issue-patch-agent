@@ -51,6 +51,7 @@ class PatchResult(BaseModel):
     task_id: str
     diff: str
     tests_passed: bool | None = None
+    applied_to_worktree: bool = False
 
 
 class WorkflowResult(BaseModel):
