@@ -36,17 +36,19 @@ class TestRunner:
         self.max_output_chars = max_output_chars
 
     def run(self, repository: Path, command_text: str) -> CommandResult:
-        if not self.worktree_manager.owns(repository):
+        worktree = repository.resolve()
+        if not self.worktree_manager.owns(worktree):
             raise CommandNotAllowedError("Tests can only run inside a managed worktree")
         command = tuple(shlex.split(command_text))
         if not command or not self._is_allowed(command):
             raise CommandNotAllowedError(
                 "Only pytest and python -m pytest commands are allowed in this version"
             )
+        self._validate_arguments(worktree, command)
         try:
             completed = subprocess.run(
                 command,
-                cwd=repository,
+                cwd=worktree,
                 check=False,
                 capture_output=True,
                 text=True,
@@ -70,6 +72,29 @@ class TestRunner:
 
     def _is_allowed(self, command: tuple[str, ...]) -> bool:
         return any(command[: len(prefix)] == prefix for prefix in self._ALLOWED_PREFIXES)
+
+    def _validate_arguments(self, worktree: Path, command: tuple[str, ...]) -> None:
+        prefix_length = max(
+            len(prefix) for prefix in self._ALLOWED_PREFIXES if command[: len(prefix)] == prefix
+        )
+        arguments = command[prefix_length:]
+        blocked_options = {"-c", "--rootdir", "--confcutdir", "--pyargs", "-p", "-o"}
+        if any(argument in blocked_options for argument in arguments):
+            raise CommandNotAllowedError("Pytest configuration overrides are not allowed")
+
+        for argument in arguments:
+            if argument.startswith("--rootdir=") or argument.startswith("--confcutdir="):
+                raise CommandNotAllowedError("Pytest configuration overrides are not allowed")
+            if argument.startswith("-"):
+                continue
+            target = argument.split("::", maxsplit=1)[0]
+            candidate = (worktree / target).resolve()
+            try:
+                candidate.relative_to(worktree)
+            except ValueError as error:
+                raise CommandNotAllowedError(
+                    "Test targets cannot point outside the managed worktree"
+                ) from error
 
     def _truncate(self, output: str) -> str:
         return output[: self.max_output_chars]

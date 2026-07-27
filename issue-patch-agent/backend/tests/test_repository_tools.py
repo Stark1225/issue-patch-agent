@@ -68,6 +68,9 @@ def test_test_runner_rejects_unapproved_commands_and_runs_pytest(
         with pytest.raises(CommandNotAllowedError, match="managed worktree"):
             runner.run(source_repository, "pytest -q test_smoke.py")
 
+        with pytest.raises(CommandNotAllowedError, match="outside the managed worktree"):
+            runner.run(worktree, f"pytest -q {source_repository / 'test_smoke.py'}")
+
         result = runner.run(worktree, "pytest -q test_smoke.py")
     finally:
         manager.cleanup(worktree)
