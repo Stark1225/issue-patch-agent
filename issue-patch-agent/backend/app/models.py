@@ -51,3 +51,11 @@ class PatchResult(BaseModel):
     task_id: str
     diff: str
     tests_passed: bool | None = None
+
+
+class WorkflowResult(BaseModel):
+    task: Task
+    plan: Plan
+    tool_calls: list[ToolCall]
+    patch_result: PatchResult
+    error: str | None = None

@@ -8,6 +8,7 @@ An inspectable skeleton for an Agent that will eventually turn a GitHub Issue in
 - Pydantic domain models: `Task`, `Plan`, `ToolCall`, and `PatchResult`
 - In-memory task service and explicit Agent workflow states
 - Disposable git worktrees, scoped code search/file reads, diffs, and allowlisted pytest execution
+- `POST /tasks/{id}/run` orchestration with a plan, tool-call log, and test report
 - CLI that prints `queued → analyzing → retrieving → planning → patching → testing → reporting → completed`
 - Unit tests, Docker image definition, and GitHub Actions CI
 
@@ -22,6 +23,8 @@ uvicorn backend.app.main:app --reload
 ```
 
 Open `http://127.0.0.1:8000/docs` to call the API.
+
+Create a task with `POST /tasks`, then call `POST /tasks/{id}/run`. The default deterministic planner retrieves files and emits a reviewable plan. It intentionally never writes a patch; a model-backed patch writer is the next stage.
 
 ## Run the CLI
 
