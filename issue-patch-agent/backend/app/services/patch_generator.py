@@ -20,25 +20,24 @@ class PatchGenerator(Protocol):
     def generate(self, *, issue: str, plan_steps: list[str], files: dict[str, str]) -> str: ...
 
 
-class OpenAIPatchGenerator:
-    """Generates unified diffs with the OpenAI Responses API."""
+class DeepSeekPatchGenerator:
+    """Generates unified diffs through DeepSeek's OpenAI-compatible Chat API."""
 
     def __init__(self, *, model: str, client: object) -> None:
         self.model = model
         self.client = client
 
     @classmethod
-    def from_environment(cls) -> "OpenAIPatchGenerator":
-        model = os.getenv("OPENAI_MODEL")
-        if not model:
-            raise ModelConfigurationError("Set OPENAI_MODEL before requesting patch generation")
-        if not os.getenv("OPENAI_API_KEY"):
-            raise ModelConfigurationError("Set OPENAI_API_KEY before requesting patch generation")
+    def from_environment(cls) -> "DeepSeekPatchGenerator":
+        model = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
+        api_key = os.getenv("DEEPSEEK_API_KEY")
+        if not api_key:
+            raise ModelConfigurationError("Set DEEPSEEK_API_KEY before requesting patch generation")
         try:
             from openai import OpenAI
         except ImportError as error:
-            raise ModelConfigurationError("Install the openai package to generate patches") from error
-        return cls(model=model, client=OpenAI())
+            raise ModelConfigurationError("Install the openai package for DeepSeek compatibility") from error
+        return cls(model=model, client=OpenAI(api_key=api_key, base_url="https://api.deepseek.com"))
 
     def generate(self, *, issue: str, plan_steps: list[str], files: dict[str, str]) -> str:
         context = "\n\n".join(f"FILE: {path}\n{contents}" for path, contents in files.items())
@@ -53,8 +52,15 @@ Plan:
 You may modify only the files shown below. Return only a valid unified diff beginning with `diff --git`. Do not include Markdown fences, explanations, shell commands, or any paths outside this context.
 
 {context}"""
-        response = self.client.responses.create(model=self.model, input=prompt)
-        output = getattr(response, "output_text", "")
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": "Return only a unified diff."},
+                {"role": "user", "content": prompt},
+            ],
+            stream=False,
+        )
+        output = response.choices[0].message.content
         if not output:
             raise RuntimeError("The model returned no patch text")
         return self._strip_code_fence(output)

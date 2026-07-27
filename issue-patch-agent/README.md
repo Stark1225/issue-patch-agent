@@ -31,11 +31,11 @@ Create a task with `POST /tasks`, then call `POST /tasks/{id}/run`. The default 
 Set credentials in the shell that starts the server; never commit them:
 
 ```bash
-export OPENAI_API_KEY="..."
-export OPENAI_MODEL="your-supported-model"
+export DEEPSEEK_API_KEY="..."
+export DEEPSEEK_MODEL="deepseek-v4-flash"
 ```
 
-Call `POST /tasks/{id}/run?generate_patch=true`. The model may only return a unified diff. The service validates its paths, applies it only to a disposable worktree, runs the allowlisted tests there, and returns the diff and results. The source repository is never modified.
+Call `POST /tasks/{id}/run?generate_patch=true`. The project uses DeepSeek's OpenAI-compatible Chat API at `https://api.deepseek.com`. The model may only return a unified diff. The service validates its paths, applies it only to a disposable worktree, runs the allowlisted tests there, and returns the diff and results. The source repository is never modified.
 
 ## Run the CLI
 

@@ -4,9 +4,9 @@ from pathlib import Path
 import pytest
 
 from backend.app.services.patch_generator import (
+    DeepSeekPatchGenerator,
     DiffValidationError,
     DiffValidator,
-    OpenAIPatchGenerator,
 )
 from backend.app.services.task_service import TaskService
 from backend.app.services.workflow_service import WorkflowService
@@ -59,23 +59,29 @@ def create_repository(tmp_path: Path) -> Path:
     return repository
 
 
-class FakeResponses:
+class FakeCompletions:
     def __init__(self) -> None:
         self.request: dict[str, str] | None = None
 
-    def create(self, *, model: str, input: str):
-        self.request = {"model": model, "input": input}
-        return type("Response", (), {"output_text": "```diff\ndiff --git a/app.py b/app.py\n```"})()
+    def create(self, *, model: str, messages: list[dict[str, str]], stream: bool):
+        self.request = {"model": model, "input": messages[-1]["content"]}
+        message = type("Message", (), {"content": "```diff\ndiff --git a/app.py b/app.py\n```"})()
+        return type("Response", (), {"choices": [type("Choice", (), {"message": message})()]})()
 
 
-class FakeOpenAIClient:
+class FakeChat:
     def __init__(self) -> None:
-        self.responses = FakeResponses()
+        self.completions = FakeCompletions()
 
 
-def test_openai_patch_generator_uses_responses_api_and_removes_a_code_fence() -> None:
-    client = FakeOpenAIClient()
-    generator = OpenAIPatchGenerator(model="configured-model", client=client)
+class FakeDeepSeekClient:
+    def __init__(self) -> None:
+        self.chat = FakeChat()
+
+
+def test_deepseek_patch_generator_uses_chat_api_and_removes_a_code_fence() -> None:
+    client = FakeDeepSeekClient()
+    generator = DeepSeekPatchGenerator(model="configured-model", client=client)
 
     diff = generator.generate(
         issue="Fix the health response",
@@ -84,9 +90,9 @@ def test_openai_patch_generator_uses_responses_api_and_removes_a_code_fence() ->
     )
 
     assert diff == "diff --git a/app.py b/app.py"
-    assert client.responses.request is not None
-    assert client.responses.request["model"] == "configured-model"
-    assert "health.py" in client.responses.request["input"]
+    assert client.chat.completions.request is not None
+    assert client.chat.completions.request["model"] == "configured-model"
+    assert "health.py" in client.chat.completions.request["input"]
 
 
 def test_workflow_applies_a_generated_diff_only_in_its_temporary_worktree(tmp_path: Path) -> None:

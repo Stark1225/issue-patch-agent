@@ -3,15 +3,15 @@ import os
 from fastapi import FastAPI, HTTPException
 
 from backend.app.models import CreateTaskRequest, Task, WorkflowResult
-from backend.app.services.patch_generator import OpenAIPatchGenerator, PatchGenerator
+from backend.app.services.patch_generator import DeepSeekPatchGenerator, PatchGenerator
 from backend.app.services.task_service import TaskNotFoundError, TaskService
 from backend.app.services.workflow_service import WorkflowService
 
 
 def build_patch_generator() -> PatchGenerator | None:
-    if not os.getenv("OPENAI_MODEL"):
+    if not os.getenv("DEEPSEEK_API_KEY"):
         return None
-    return OpenAIPatchGenerator.from_environment()
+    return DeepSeekPatchGenerator.from_environment()
 
 
 app = FastAPI(title="IssuePatch Agent")
