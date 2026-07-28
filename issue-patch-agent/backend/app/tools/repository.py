@@ -54,12 +54,27 @@ class WorktreeManager:
 class GitHubRepositoryCloner:
     """Clones a public GitHub repository into a disposable directory."""
 
-    def __init__(self, *, timeout_seconds: int = 60) -> None:
+    def __init__(
+        self,
+        *,
+        timeout_seconds: int = 60,
+        approved_repositories: set[str] | None = None,
+    ) -> None:
         self.timeout_seconds = timeout_seconds
+        configured_repositories = approved_repositories
+        if configured_repositories is None:
+            configured_repositories = {
+                repository.strip()
+                for repository in os.getenv("APPROVED_GITHUB_REPOSITORIES", "").split(",")
+                if repository.strip()
+            }
+        self.approved_repositories = configured_repositories
         self._clone_roots: dict[Path, Path] = {}
 
     def clone(self, repository_url: str) -> Path:
         normalized_url = self.normalize_url(repository_url)
+        if self.repository_name(normalized_url) not in self.approved_repositories:
+            raise PermissionError("This GitHub repository is not approved for cloud execution")
         clone_root = Path(tempfile.mkdtemp(prefix="issue-patch-agent-clone-"))
         repository = clone_root / "repository"
         try:
@@ -119,6 +134,11 @@ class GitHubRepositoryCloner:
         ):
             raise ValueError("GitHub owner and repository names contain unsupported characters")
         return f"https://github.com/{owner}/{repository}.git"
+
+    @staticmethod
+    def repository_name(normalized_url: str) -> str:
+        parts = [part for part in urlparse(normalized_url).path.split("/") if part]
+        return f"{parts[0]}/{parts[1].removesuffix('.git')}"
 
 
 class RepositoryTools:
@@ -232,3 +252,4 @@ class RepositoryTools:
         if len(result.stdout) > self.max_diff_chars:
             raise ValueError("Git diff exceeds the configured size limit")
         return result.stdout
+import os

@@ -114,3 +114,30 @@ def test_run_task_clones_a_github_repository_before_creating_a_worktree(tmp_path
     assert cloner.cloned_urls == ["https://github.com/owner/repository"]
     assert cloner.cleaned_repositories == [repository]
     assert result.tool_calls[0].tool_name == "clone_repository"
+
+
+def test_workflow_cleans_the_clone_when_worktree_cleanup_fails(tmp_path: Path, monkeypatch) -> None:
+    repository = create_repository(tmp_path)
+    cloner = FakeRepositoryCloner(repository)
+    task_service = TaskService()
+    task = task_service.create_task(
+        repository_url="https://github.com/owner/repository",
+        issue="Inspect the health function and verify its test",
+        test_command="pytest -q",
+    )
+
+    from backend.app.services import workflow_service
+
+    original_manager = workflow_service.WorktreeManager
+
+    class FailingWorktreeManager(original_manager):
+        def cleanup(self, worktree: Path) -> None:
+            super().cleanup(worktree)
+            raise RuntimeError("simulated cleanup failure")
+
+    monkeypatch.setattr(workflow_service, "WorktreeManager", FailingWorktreeManager)
+
+    result = WorkflowService(task_service, repository_cloner=cloner).run(task.id)
+
+    assert result.task.status == "completed"
+    assert cloner.cleaned_repositories == [repository]

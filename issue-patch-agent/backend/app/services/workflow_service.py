@@ -1,3 +1,4 @@
+import logging
 import re
 from pathlib import Path
 
@@ -6,6 +7,9 @@ from backend.app.services.patch_generator import DiffApplier, DiffValidator, Pat
 from backend.app.services.task_service import TaskService
 from backend.app.tools.repository import GitHubRepositoryCloner, RepositoryTools, WorktreeManager
 from backend.app.tools.runner import TestRunner
+
+
+logger = logging.getLogger(__name__)
 
 
 class DeterministicPlanner:
@@ -175,6 +179,12 @@ class WorkflowService:
             )
         finally:
             if worktree is not None and manager.owns(worktree):
-                manager.cleanup(worktree)
+                try:
+                    manager.cleanup(worktree)
+                except Exception:
+                    logger.exception("Unable to remove temporary worktree")
             if cloned_repository is not None:
-                self.repository_cloner.cleanup(cloned_repository)
+                try:
+                    self.repository_cloner.cleanup(cloned_repository)
+                except Exception:
+                    logger.exception("Unable to remove temporary repository clone")

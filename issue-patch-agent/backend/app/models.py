@@ -3,7 +3,9 @@ from enum import StrEnum
 from typing import Any
 from uuid import uuid4
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+from backend.app.tools.repository import GitHubRepositoryCloner
 
 
 def utc_now() -> datetime:
@@ -27,6 +29,13 @@ class CreateTaskRequest(BaseModel):
     repository_url: str | None = None
     issue: str = Field(min_length=1)
     test_command: str = Field(min_length=1)
+
+    @field_validator("repository_url")
+    @classmethod
+    def repository_url_is_a_supported_github_url(cls, value: str | None) -> str | None:
+        if value is not None:
+            GitHubRepositoryCloner.normalize_url(value)
+        return value
 
     @model_validator(mode="after")
     def has_repository_source(self) -> "CreateTaskRequest":

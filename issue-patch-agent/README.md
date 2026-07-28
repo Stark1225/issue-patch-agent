@@ -26,7 +26,13 @@ Open `http://127.0.0.1:8000/docs` to call the API.
 
 Create a task with `POST /tasks`, then call `POST /tasks/{id}/run`. The default deterministic planner retrieves files and emits a reviewable plan without changing code.
 
-For the cloud dashboard, provide a public GitHub repository URL such as `https://github.com/owner/repository`. The service shallow-clones it into a temporary directory, creates an isolated worktree, and deletes both after the run. Local `repository_path` input remains available for Docker Compose and API clients.
+For the cloud dashboard, provide an approved public GitHub repository URL such as `https://github.com/owner/repository`. The service shallow-clones it into a temporary directory, creates an isolated worktree, and deletes both after the run. Configure an exact allowlist before enabling remote execution:
+
+```bash
+export APPROVED_GITHUB_REPOSITORIES="owner/repository"
+```
+
+This is a demonstration safety boundary, not a sandbox. Running tests from arbitrary repositories requires a separate unprivileged execution environment with no credentials, network restrictions, and resource quotas. Local `repository_path` input remains available for Docker Compose and API clients.
 
 ## Generate a patch for review
 

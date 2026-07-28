@@ -29,3 +29,10 @@ def test_normalize_url_accepts_public_github_repository_urls(
 def test_normalize_url_rejects_unsupported_repository_urls(repository_url: str) -> None:
     with pytest.raises(ValueError):
         GitHubRepositoryCloner.normalize_url(repository_url)
+
+
+def test_clone_requires_an_explicitly_approved_repository() -> None:
+    cloner = GitHubRepositoryCloner(approved_repositories={"owner/other-repository"})
+
+    with pytest.raises(PermissionError, match="not approved"):
+        cloner.clone("https://github.com/owner/repository")
