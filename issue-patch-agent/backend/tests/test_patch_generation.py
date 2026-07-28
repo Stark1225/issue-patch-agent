@@ -33,6 +33,22 @@ diff --git a/test_health.py b/test_health.py
 """
 
 
+class RepairingPatchGenerator(FakePatchGenerator):
+    def generate(self, *, issue: str, plan_steps: list[str], files: dict[str, str]) -> str:
+        return "diff --git a/other.py b/other.py\n--- a/other.py\n+++ b/other.py\n"
+
+    def repair(
+        self,
+        *,
+        issue: str,
+        plan_steps: list[str],
+        files: dict[str, str],
+        rejected_diff: str,
+        error: str,
+    ) -> str:
+        return super().generate(issue=issue, plan_steps=plan_steps, files=files)
+
+
 def create_repository(tmp_path: Path) -> Path:
     repository = tmp_path / "patch-repository"
     repository.mkdir()
@@ -113,6 +129,23 @@ def test_workflow_applies_a_generated_diff_only_in_its_temporary_worktree(tmp_pa
     assert result.patch_result.applied_to_worktree is True
     assert result.patch_result.tests_passed is True
     assert "return 'ok'" in (repository / "health.py").read_text()
+
+
+def test_workflow_repairs_one_rejected_model_diff(tmp_path: Path) -> None:
+    repository = create_repository(tmp_path)
+    task_service = TaskService()
+    task = task_service.create_task(
+        repository_path=str(repository),
+        issue="Change health response to ready",
+        test_command="pytest -q",
+    )
+
+    result = WorkflowService(task_service, patch_generator=RepairingPatchGenerator()).run(
+        task.id, generate_patch=True
+    )
+
+    assert result.task.status == "completed"
+    assert any(call.tool_name == "repair_patch" for call in result.tool_calls)
 
 
 def test_diff_validator_rejects_a_path_outside_the_worktree() -> None:

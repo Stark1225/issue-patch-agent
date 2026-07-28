@@ -52,6 +52,36 @@ Plan:
 You may modify only the files shown below. Return only a valid unified diff beginning with `diff --git`. Use standard Git headers (`diff --git`, `---`, `+++`) and make every hunk header line count match its contents exactly. Do not include Markdown fences, explanations, shell commands, ellipses, or any paths outside this context.
 
 {context}"""
+        return self._request_diff(prompt)
+
+    def repair(
+        self,
+        *,
+        issue: str,
+        plan_steps: list[str],
+        files: dict[str, str],
+        rejected_diff: str,
+        error: str,
+    ) -> str:
+        allowed_files = ", ".join(files)
+        prompt = f"""Repair a rejected unified diff for this issue:
+
+{issue}
+
+The previous diff failed validation with:
+{error}
+
+You may modify only these files: {allowed_files}
+Return a complete replacement diff beginning with `diff --git`. Use correct Git hunk line counts. Return no explanation or Markdown fence.
+
+Previous rejected diff:
+{rejected_diff}
+
+Current file contents:
+{chr(10).join(f'FILE: {path}{chr(10)}{contents}' for path, contents in files.items())}"""
+        return self._request_diff(prompt)
+
+    def _request_diff(self, prompt: str) -> str:
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[

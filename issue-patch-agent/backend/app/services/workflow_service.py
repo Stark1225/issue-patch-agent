@@ -3,7 +3,13 @@ import re
 from pathlib import Path
 
 from backend.app.models import PatchResult, Plan, Task, TaskStatus, ToolCall, WorkflowResult
-from backend.app.services.patch_generator import DiffApplier, DiffValidator, PatchGenerator
+from backend.app.services.patch_generator import (
+    DiffApplicationError,
+    DiffApplier,
+    DiffValidationError,
+    DiffValidator,
+    PatchGenerator,
+)
 from backend.app.services.task_service import TaskService
 from backend.app.tools.repository import GitHubRepositoryCloner, RepositoryTools, WorktreeManager
 from backend.app.tools.runner import TestRunner
@@ -120,8 +126,31 @@ class WorkflowService:
                     plan_steps=plan.steps,
                     files=retrieved_files,
                 )
-                DiffValidator().validate(proposed_diff, allowed_paths=set(retrieved_files))
-                DiffApplier().apply(worktree, proposed_diff)
+                validator = DiffValidator()
+                applier = DiffApplier()
+                try:
+                    validator.validate(proposed_diff, allowed_paths=set(retrieved_files))
+                    applier.apply(worktree, proposed_diff)
+                except (DiffValidationError, DiffApplicationError) as error:
+                    repair = getattr(self.patch_generator, "repair", None)
+                    if not callable(repair):
+                        raise
+                    proposed_diff = repair(
+                        issue=task.issue,
+                        plan_steps=plan.steps,
+                        files=retrieved_files,
+                        rejected_diff=proposed_diff,
+                        error=str(error),
+                    )
+                    validator.validate(proposed_diff, allowed_paths=set(retrieved_files))
+                    applier.apply(worktree, proposed_diff)
+                    calls.append(
+                        ToolCall(
+                            task_id=task.id,
+                            tool_name="repair_patch",
+                            result="Regenerated a patch after the first diff was rejected.",
+                        )
+                    )
                 patch_result = PatchResult(
                     task_id=task.id,
                     diff=tools.diff(),
