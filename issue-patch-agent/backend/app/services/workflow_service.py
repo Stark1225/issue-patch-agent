@@ -6,6 +6,7 @@ from backend.app.models import PatchResult, Plan, Task, TaskStatus, ToolCall, Wo
 from backend.app.services.patch_generator import (
     DiffApplicationError,
     DiffApplier,
+    DiffNormalizer,
     DiffValidationError,
     DiffValidator,
     PatchGenerator,
@@ -128,7 +129,11 @@ class WorkflowService:
                 )
                 validator = DiffValidator()
                 applier = DiffApplier()
+                normalizer = DiffNormalizer()
                 try:
+                    proposed_diff = normalizer.normalize(
+                        proposed_diff, allowed_paths=set(retrieved_files)
+                    )
                     validator.validate(proposed_diff, allowed_paths=set(retrieved_files))
                     applier.apply(worktree, proposed_diff)
                 except (DiffValidationError, DiffApplicationError) as error:
@@ -141,6 +146,9 @@ class WorkflowService:
                         files=retrieved_files,
                         rejected_diff=proposed_diff,
                         error=str(error),
+                    )
+                    proposed_diff = normalizer.normalize(
+                        proposed_diff, allowed_paths=set(retrieved_files)
                     )
                     validator.validate(proposed_diff, allowed_paths=set(retrieved_files))
                     applier.apply(worktree, proposed_diff)

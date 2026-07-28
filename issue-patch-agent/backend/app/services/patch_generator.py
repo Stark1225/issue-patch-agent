@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 from pathlib import Path, PurePosixPath
 from typing import Protocol
@@ -14,6 +15,70 @@ class DiffValidationError(ValueError):
 
 class DiffApplicationError(RuntimeError):
     """Raised when Git cannot safely apply a validated diff."""
+
+
+class DiffNormalizer:
+    """Repairs harmless model formatting mistakes before Git remains the final authority."""
+
+    _HUNK_HEADER = re.compile(
+        r"^@@ -(?P<old_start>\d+)(?:,\d+)? \+(?P<new_start>\d+)(?:,\d+)? @@(?P<suffix>.*)$"
+    )
+
+    def normalize(self, diff: str, *, allowed_paths: set[str]) -> str:
+        lines = self._map_paths(diff.splitlines(), allowed_paths)
+        return "\n".join(self._fix_hunk_counts(lines)) + "\n"
+
+    @staticmethod
+    def _map_paths(lines: list[str], allowed_paths: set[str]) -> list[str]:
+        replacements: dict[str, str] = {}
+        for line in lines:
+            if line.startswith(("--- a/", "+++ b/")):
+                path = line[6:].split("\t", maxsplit=1)[0]
+                if path in allowed_paths:
+                    continue
+                candidates = [allowed for allowed in allowed_paths if allowed.endswith(f"/{path}")]
+                if len(candidates) == 1:
+                    replacements[path] = candidates[0]
+        mapped_lines: list[str] = []
+        for line in lines:
+            for original, replacement in replacements.items():
+                if line.startswith("diff --git "):
+                    line = line.replace(f"a/{original}", f"a/{replacement}").replace(
+                        f"b/{original}", f"b/{replacement}"
+                    )
+                elif line.startswith("--- a/"):
+                    line = line.replace(f"a/{original}", f"a/{replacement}", 1)
+                elif line.startswith("+++ b/"):
+                    line = line.replace(f"b/{original}", f"b/{replacement}", 1)
+            mapped_lines.append(line)
+        return mapped_lines
+
+    def _fix_hunk_counts(self, lines: list[str]) -> list[str]:
+        normalized = lines[:]
+        index = 0
+        while index < len(normalized):
+            match = self._HUNK_HEADER.match(normalized[index])
+            if match is None:
+                index += 1
+                continue
+            end = index + 1
+            old_count = new_count = 0
+            while end < len(normalized) and not normalized[end].startswith(("@@ ", "diff --git ")):
+                line = normalized[end]
+                if line.startswith("-"):
+                    old_count += 1
+                elif line.startswith("+"):
+                    new_count += 1
+                elif not line.startswith("\\"):
+                    old_count += 1
+                    new_count += 1
+                end += 1
+            normalized[index] = (
+                f"@@ -{match.group('old_start')},{old_count} "
+                f"+{match.group('new_start')},{new_count} @@{match.group('suffix')}"
+            )
+            index = end
+        return normalized
 
 
 class PatchGenerator(Protocol):

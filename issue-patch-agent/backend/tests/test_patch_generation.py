@@ -5,6 +5,7 @@ import pytest
 
 from backend.app.services.patch_generator import (
     DeepSeekPatchGenerator,
+    DiffNormalizer,
     DiffValidationError,
     DiffValidator,
 )
@@ -158,3 +159,21 @@ def test_diff_validator_rejects_a_path_outside_the_worktree() -> None:
 
     with pytest.raises(DiffValidationError, match="outside"):
         DiffValidator().validate(unsafe_diff)
+
+
+def test_diff_normalizer_maps_a_unique_relative_path_and_corrects_hunk_counts() -> None:
+    diff = """diff --git a/backend/app/main.py b/backend/app/main.py
+--- a/backend/app/main.py
++++ b/backend/app/main.py
+@@ -1,9 +1,99 @@
+ def health():
++    \"\"\"Report whether the service is available.\"\"\"
+     return {\"status\": \"ok\"}
+"""
+
+    normalized = DiffNormalizer().normalize(
+        diff, allowed_paths={"issue-patch-agent/backend/app/main.py"}
+    )
+
+    assert "a/issue-patch-agent/backend/app/main.py" in normalized
+    assert "@@ -1,2 +1,3 @@" in normalized
