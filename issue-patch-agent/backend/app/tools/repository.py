@@ -209,6 +209,11 @@ class RepositoryTools:
         _, stderr = process.communicate()
         if process.returncode not in (0, 1):
             raise RuntimeError(stderr.strip() or "Code search failed")
+        for filename_match in self._search_filenames(query, max_results=max_results):
+            if filename_match not in matches:
+                matches.append(filename_match)
+                if len(matches) == max_results:
+                    break
         return matches
 
     def _search_with_python(self, query: str, max_results: int) -> list[str]:
@@ -222,7 +227,21 @@ class RepositoryTools:
                 contents = candidate.read_text(encoding="utf-8")
             except UnicodeDecodeError:
                 continue
-            if query in contents:
+            if query in contents or query.casefold() in candidate.name.casefold():
+                matches.append(str(candidate.relative_to(self.root)))
+                if len(matches) == max_results:
+                    break
+        return matches
+
+    def _search_filenames(self, query: str, *, max_results: int) -> list[str]:
+        normalized_query = query.casefold()
+        if not normalized_query:
+            return []
+        matches: list[str] = []
+        for candidate in self.root.rglob("*"):
+            if ".git" in candidate.parts or not candidate.is_file():
+                continue
+            if normalized_query in candidate.name.casefold():
                 matches.append(str(candidate.relative_to(self.root)))
                 if len(matches) == max_results:
                     break

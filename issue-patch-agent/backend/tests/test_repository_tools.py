@@ -15,6 +15,7 @@ def source_repository(tmp_path: Path) -> Path:
     subprocess.run(["git", "init", str(repository)], check=True, capture_output=True)
     (repository / "src").mkdir()
     (repository / "src" / "app.py").write_text("def health():\n    return 'ok'\n")
+    (repository / "guide.md").write_text("This document has no matching file-name text.\n")
     (repository / "test_smoke.py").write_text("def test_smoke():\n    assert True\n")
     subprocess.run(["git", "-C", str(repository), "add", "."], check=True)
     subprocess.run(
@@ -68,6 +69,17 @@ def test_repository_tools_fall_back_when_ripgrep_is_unavailable(
                 lambda *_args, **_kwargs: (_ for _ in ()).throw(FileNotFoundError()),
             )
             assert tools.search("def health") == ["src/app.py"]
+    finally:
+        manager.cleanup(worktree)
+
+
+def test_repository_tools_searches_file_names(source_repository: Path) -> None:
+    manager = WorktreeManager()
+    worktree = manager.create(source_repository)
+    tools = RepositoryTools(worktree)
+
+    try:
+        assert tools.search("guide") == ["guide.md"]
     finally:
         manager.cleanup(worktree)
 

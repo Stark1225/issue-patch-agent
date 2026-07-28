@@ -49,7 +49,7 @@ Issue:
 Plan:
 {chr(10).join(f'- {step}' for step in plan_steps)}
 
-You may modify only the files shown below. Return only a valid unified diff beginning with `diff --git`. Do not include Markdown fences, explanations, shell commands, or any paths outside this context.
+You may modify only the files shown below. Return only a valid unified diff beginning with `diff --git`. Use standard Git headers (`diff --git`, `---`, `+++`) and make every hunk header line count match its contents exactly. Do not include Markdown fences, explanations, shell commands, ellipses, or any paths outside this context.
 
 {context}"""
         response = self.client.chat.completions.create(
