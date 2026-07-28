@@ -1,3 +1,4 @@
+import os
 import shutil
 import select
 import subprocess
@@ -63,9 +64,12 @@ class GitHubRepositoryCloner:
         self.timeout_seconds = timeout_seconds
         configured_repositories = approved_repositories
         if configured_repositories is None:
+            configured_value = os.getenv("APPROVED_GITHUB_REPOSITORIES") or os.getenv(
+                "APPROVEDGITHUBREPOSITORIES", ""
+            )
             configured_repositories = {
                 repository.strip()
-                for repository in os.getenv("APPROVED_GITHUB_REPOSITORIES", "").split(",")
+                for repository in configured_value.split(",")
                 if repository.strip()
             }
         self.approved_repositories = configured_repositories

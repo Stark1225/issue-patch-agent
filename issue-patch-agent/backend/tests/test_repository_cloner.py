@@ -36,3 +36,12 @@ def test_clone_requires_an_explicitly_approved_repository() -> None:
 
     with pytest.raises(PermissionError, match="not approved"):
         cloner.clone("https://github.com/owner/repository")
+
+
+def test_cloner_reads_render_compatible_allowlist_variable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("APPROVED_GITHUB_REPOSITORIES", raising=False)
+    monkeypatch.setenv("APPROVEDGITHUBREPOSITORIES", "owner/repository")
+
+    cloner = GitHubRepositoryCloner()
+
+    assert cloner.approved_repositories == {"owner/repository"}
