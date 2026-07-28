@@ -1,10 +1,14 @@
 from backend.app.main import allowed_origins
 
 
-def test_allowed_origins_defaults_to_local_frontend(monkeypatch) -> None:
+def test_allowed_origins_defaults_to_local_and_deployed_frontends(monkeypatch) -> None:
     monkeypatch.delenv("ALLOWED_ORIGINS", raising=False)
 
-    assert allowed_origins() == ["http://localhost:5173", "http://127.0.0.1:5173"]
+    assert allowed_origins() == [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "https://issue-patch-agent-web.onrender.com",
+    ]
 
 
 def test_allowed_origins_reads_a_comma_separated_environment_value(monkeypatch) -> None:

@@ -13,7 +13,11 @@ def allowed_origins() -> list[str]:
     configured_origins = os.getenv("ALLOWED_ORIGINS")
     if configured_origins:
         return [origin.strip() for origin in configured_origins.split(",") if origin.strip()]
-    return ["http://localhost:5173", "http://127.0.0.1:5173"]
+    return [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "https://issue-patch-agent-web.onrender.com",
+    ]
 
 
 def build_patch_generator() -> PatchGenerator | None:
