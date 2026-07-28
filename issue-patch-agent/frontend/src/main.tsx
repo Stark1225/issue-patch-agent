@@ -40,7 +40,7 @@ function App() {
       <header>
         <p className="eyebrow">SAFE CODE MAINTENANCE AGENT</p>
         <h1>IssuePatch <span>Agent</span></h1>
-        <p className="intro">在隔离 worktree 中检索、规划、生成可审查补丁并运行测试。原始仓库不会被修改。</p>
+        <p className="intro">在隔离 worktree 中检索、规划、生成可审查补丁并运行测试。原始仓库保持不变。</p>
       </header>
 
       <section className="shell">
