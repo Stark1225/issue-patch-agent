@@ -1,4 +1,5 @@
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -94,6 +95,7 @@ def test_test_runner_rejects_unapproved_commands_and_runs_pytest(
 
     assert result.exit_code == 0
     assert result.timed_out is False
+    assert result.command[:3] == (sys.executable, "-m", "pytest")
     assert "1 passed" in result.stdout
 
 

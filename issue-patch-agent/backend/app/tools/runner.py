@@ -1,5 +1,6 @@
 import shlex
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -39,12 +40,13 @@ class TestRunner:
         worktree = repository.resolve()
         if not self.worktree_manager.owns(worktree):
             raise CommandNotAllowedError("Tests can only run inside a managed worktree")
-        command = tuple(shlex.split(command_text))
-        if not command or not self._is_allowed(command):
+        requested_command = tuple(shlex.split(command_text))
+        if not requested_command or not self._is_allowed(requested_command):
             raise CommandNotAllowedError(
                 "Only pytest and python -m pytest commands are allowed in this version"
             )
-        self._validate_arguments(worktree, command)
+        self._validate_arguments(worktree, requested_command)
+        command = self._resolve_command(requested_command)
         try:
             completed = subprocess.run(
                 command,
@@ -72,6 +74,12 @@ class TestRunner:
 
     def _is_allowed(self, command: tuple[str, ...]) -> bool:
         return any(command[: len(prefix)] == prefix for prefix in self._ALLOWED_PREFIXES)
+
+    @staticmethod
+    def _resolve_command(command: tuple[str, ...]) -> tuple[str, ...]:
+        if command[:1] == ("pytest",):
+            return (sys.executable, "-m", "pytest", *command[1:])
+        return (sys.executable, *command[1:])
 
     def _validate_arguments(self, worktree: Path, command: tuple[str, ...]) -> None:
         prefix_length = max(
