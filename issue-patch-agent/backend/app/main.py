@@ -9,6 +9,13 @@ from backend.app.services.task_service import TaskNotFoundError, TaskService
 from backend.app.services.workflow_service import WorkflowService
 
 
+def allowed_origins() -> list[str]:
+    configured_origins = os.getenv("ALLOWED_ORIGINS")
+    if configured_origins:
+        return [origin.strip() for origin in configured_origins.split(",") if origin.strip()]
+    return ["http://localhost:5173", "http://127.0.0.1:5173"]
+
+
 def build_patch_generator() -> PatchGenerator | None:
     if not os.getenv("DEEPSEEK_API_KEY"):
         return None
@@ -18,7 +25,7 @@ def build_patch_generator() -> PatchGenerator | None:
 app = FastAPI(title="IssuePatch Agent")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=allowed_origins(),
     allow_credentials=False,
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],

@@ -58,6 +58,8 @@ npm run dev
 
 Open the URL Vite prints (normally `http://localhost:5173`). The development proxy forwards `/api` requests to the local backend.
 
+For a separately hosted frontend, set `VITE_API_BASE_URL` to the backend's public URL when building the frontend. Set `ALLOWED_ORIGINS` on the backend to the frontend's public URL. Both values are deployment configuration and are not committed.
+
 ## Run with Docker Compose
 
 Install and start Docker Desktop first. Docker Compose will run the backend and dashboard together. The Agent needs access to the repositories it analyzes, so mount the **parent directory** that contains your target Git repositories:

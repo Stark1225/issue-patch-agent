@@ -25,8 +25,10 @@ export interface WorkflowResult {
   error?: string;
 }
 
+const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || "/api").replace(/\/$/, "");
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`/api${path}`, {
+  const response = await fetch(`${apiBaseUrl}${path}`, {
     ...init,
     headers: { "Content-Type": "application/json", ...init?.headers },
   });
