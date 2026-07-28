@@ -3,7 +3,7 @@ from enum import StrEnum
 from typing import Any
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 def utc_now() -> datetime:
@@ -23,9 +23,16 @@ class TaskStatus(StrEnum):
 
 
 class CreateTaskRequest(BaseModel):
-    repository_path: str = Field(min_length=1)
+    repository_path: str | None = None
+    repository_url: str | None = None
     issue: str = Field(min_length=1)
     test_command: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def has_repository_source(self) -> "CreateTaskRequest":
+        if bool(self.repository_path) == bool(self.repository_url):
+            raise ValueError("Provide exactly one of repository_path or repository_url")
+        return self
 
 
 class Task(CreateTaskRequest):

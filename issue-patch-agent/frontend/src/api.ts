@@ -11,10 +11,18 @@ export type TaskStatus =
 
 export interface Task {
   id: string;
-  repository_path: string;
+  repository_path: string | null;
+  repository_url: string | null;
   issue: string;
   test_command: string;
   status: TaskStatus;
+}
+
+export interface CreateTaskInput {
+  repository_path?: string;
+  repository_url?: string;
+  issue: string;
+  test_command: string;
 }
 
 export interface WorkflowResult {
@@ -38,7 +46,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export function createTask(input: Omit<Task, "id" | "status">): Promise<Task> {
+export function createTask(input: CreateTaskInput): Promise<Task> {
   return request("/tasks", { method: "POST", body: JSON.stringify(input) });
 }
 

@@ -5,7 +5,7 @@ import { createTask, runTask, type WorkflowResult } from "./api";
 import "./styles.css";
 
 const initialForm = {
-  repository_path: "",
+  repository_url: "",
   issue: "",
   test_command: "pytest -q",
 };
@@ -45,8 +45,8 @@ function App() {
 
       <section className="shell">
         <form onSubmit={handleSubmit}>
-          <label>目标 Git 仓库绝对路径
-            <input required placeholder="/Users/you/projects/example-repo" value={form.repository_path} onChange={(event) => setForm({ ...form, repository_path: event.target.value })} />
+          <label>公开 GitHub 仓库 URL
+            <input required type="url" placeholder="https://github.com/owner/repository" value={form.repository_url} onChange={(event) => setForm({ ...form, repository_url: event.target.value })} />
           </label>
           <label>Issue / 修复目标
             <textarea required placeholder="例如：登录失败后页面显示空白，应该显示错误提示。" value={form.issue} onChange={(event) => setForm({ ...form, issue: event.target.value })} />

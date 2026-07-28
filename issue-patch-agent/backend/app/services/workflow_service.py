@@ -4,7 +4,7 @@ from pathlib import Path
 from backend.app.models import PatchResult, Plan, Task, TaskStatus, ToolCall, WorkflowResult
 from backend.app.services.patch_generator import DiffApplier, DiffValidator, PatchGenerator
 from backend.app.services.task_service import TaskService
-from backend.app.tools.repository import RepositoryTools, WorktreeManager
+from backend.app.tools.repository import GitHubRepositoryCloner, RepositoryTools, WorktreeManager
 from backend.app.tools.runner import TestRunner
 
 
@@ -31,10 +31,16 @@ class DeterministicPlanner:
 class WorkflowService:
     """Runs the inspect-plan-test workflow while preserving the source checkout."""
 
-    def __init__(self, task_service: TaskService, patch_generator: PatchGenerator | None = None) -> None:
+    def __init__(
+        self,
+        task_service: TaskService,
+        patch_generator: PatchGenerator | None = None,
+        repository_cloner: GitHubRepositoryCloner | None = None,
+    ) -> None:
         self.task_service = task_service
         self.planner = DeterministicPlanner()
         self.patch_generator = patch_generator
+        self.repository_cloner = repository_cloner or GitHubRepositoryCloner()
 
     def run(self, task_id: str, *, generate_patch: bool = False) -> WorkflowResult:
         task = self.task_service.get_task(task_id)
@@ -43,15 +49,30 @@ class WorkflowService:
         patch_result = PatchResult(task_id=task.id, diff="", tests_passed=None)
         manager = WorktreeManager()
         worktree: Path | None = None
+        cloned_repository: Path | None = None
 
         try:
             self.task_service.update_status(task.id, TaskStatus.ANALYZING)
-            worktree = manager.create(Path(task.repository_path))
+            if task.repository_url:
+                cloned_repository = self.repository_cloner.clone(task.repository_url)
+                source_repository = cloned_repository
+                calls.append(
+                    ToolCall(
+                        task_id=task.id,
+                        tool_name="clone_repository",
+                        arguments={"repository_url": task.repository_url},
+                        result="Cloned the public GitHub repository into a temporary directory.",
+                    )
+                )
+            else:
+                assert task.repository_path is not None
+                source_repository = Path(task.repository_path)
+            worktree = manager.create(source_repository)
             calls.append(
                 ToolCall(
                     task_id=task.id,
                     tool_name="create_worktree",
-                    arguments={"repository_path": task.repository_path},
+                    arguments={"repository_path": str(source_repository)},
                     result="Created an isolated worktree.",
                 )
             )
@@ -155,3 +176,5 @@ class WorkflowService:
         finally:
             if worktree is not None and manager.owns(worktree):
                 manager.cleanup(worktree)
+            if cloned_repository is not None:
+                self.repository_cloner.cleanup(cloned_repository)

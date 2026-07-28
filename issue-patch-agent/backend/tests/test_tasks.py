@@ -30,6 +30,35 @@ def test_create_task_requires_all_agent_inputs() -> None:
     assert response.status_code == 422
 
 
+def test_create_task_accepts_a_public_github_repository_url() -> None:
+    response = TestClient(app).post(
+        "/tasks",
+        json={
+            "repository_url": "https://github.com/owner/repository",
+            "issue": "Verify the public repository clone workflow",
+            "test_command": "pytest -q",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["repository_url"] == "https://github.com/owner/repository"
+    assert response.json()["repository_path"] is None
+
+
+def test_create_task_requires_exactly_one_repository_source() -> None:
+    response = TestClient(app).post(
+        "/tasks",
+        json={
+            "repository_path": "/tmp/example-repo",
+            "repository_url": "https://github.com/owner/repository",
+            "issue": "Verify input validation",
+            "test_command": "pytest -q",
+        },
+    )
+
+    assert response.status_code == 422
+
+
 def test_local_frontend_origin_is_allowed_to_create_tasks() -> None:
     response = TestClient(app).options(
         "/tasks",

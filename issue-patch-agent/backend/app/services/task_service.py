@@ -14,12 +14,14 @@ class TaskService:
     def create_task(
         self,
         *,
-        repository_path: str,
+        repository_path: str | None = None,
+        repository_url: str | None = None,
         issue: str,
         test_command: str,
     ) -> Task:
         task = Task(
             repository_path=repository_path,
+            repository_url=repository_url,
             issue=issue,
             test_command=test_command,
         )

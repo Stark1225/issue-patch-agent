@@ -4,6 +4,7 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
+from urllib.parse import urlparse
 
 
 class WorktreeManager:
@@ -48,6 +49,76 @@ class WorktreeManager:
         if result.returncode != 0:
             raise RuntimeError(result.stderr.strip() or "Git command failed")
         return result
+
+
+class GitHubRepositoryCloner:
+    """Clones a public GitHub repository into a disposable directory."""
+
+    def __init__(self, *, timeout_seconds: int = 60) -> None:
+        self.timeout_seconds = timeout_seconds
+        self._clone_roots: dict[Path, Path] = {}
+
+    def clone(self, repository_url: str) -> Path:
+        normalized_url = self.normalize_url(repository_url)
+        clone_root = Path(tempfile.mkdtemp(prefix="issue-patch-agent-clone-"))
+        repository = clone_root / "repository"
+        try:
+            result = subprocess.run(
+                [
+                    "git",
+                    "-c",
+                    "protocol.file.allow=never",
+                    "clone",
+                    "--depth",
+                    "1",
+                    "--no-tags",
+                    normalized_url,
+                    str(repository),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=self.timeout_seconds,
+            )
+        except subprocess.TimeoutExpired as error:
+            shutil.rmtree(clone_root, ignore_errors=True)
+            raise TimeoutError("Repository clone timed out") from error
+        if result.returncode != 0:
+            shutil.rmtree(clone_root, ignore_errors=True)
+            raise RuntimeError(result.stderr.strip() or "Unable to clone repository")
+        resolved_repository = repository.resolve()
+        self._clone_roots[resolved_repository] = clone_root
+        return resolved_repository
+
+    def cleanup(self, repository: Path) -> None:
+        clone_root = self._clone_roots.pop(repository.resolve(), None)
+        if clone_root is not None:
+            shutil.rmtree(clone_root, ignore_errors=True)
+
+    @staticmethod
+    def normalize_url(repository_url: str) -> str:
+        parsed = urlparse(repository_url)
+        if (
+            parsed.scheme != "https"
+            or parsed.hostname != "github.com"
+            or parsed.port is not None
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("Only public https://github.com/owner/repository URLs are supported")
+        parts = [part for part in parsed.path.split("/") if part]
+        if len(parts) != 2:
+            raise ValueError("GitHub repository URLs must use /owner/repository")
+        owner, repository = parts
+        if repository.endswith(".git"):
+            repository = repository[:-4]
+        if not owner or not repository or not all(
+            character.isalnum() or character in "._-" for character in f"{owner}{repository}"
+        ):
+            raise ValueError("GitHub owner and repository names contain unsupported characters")
+        return f"https://github.com/{owner}/{repository}.git"
 
 
 class RepositoryTools:

@@ -4,6 +4,8 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from backend.app.main import app
+from backend.app.services.task_service import TaskService
+from backend.app.services.workflow_service import WorkflowService
 
 
 def create_repository(tmp_path: Path) -> Path:
@@ -80,3 +82,35 @@ def test_run_task_marks_a_failed_test_run_as_failed(tmp_path: Path) -> None:
     assert response.status_code == 200
     assert response.json()["task"]["status"] == "failed"
     assert response.json()["patch_result"]["tests_passed"] is False
+
+
+class FakeRepositoryCloner:
+    def __init__(self, repository: Path) -> None:
+        self.repository = repository
+        self.cloned_urls: list[str] = []
+        self.cleaned_repositories: list[Path] = []
+
+    def clone(self, repository_url: str) -> Path:
+        self.cloned_urls.append(repository_url)
+        return self.repository
+
+    def cleanup(self, repository: Path) -> None:
+        self.cleaned_repositories.append(repository)
+
+
+def test_run_task_clones_a_github_repository_before_creating_a_worktree(tmp_path: Path) -> None:
+    repository = create_repository(tmp_path)
+    cloner = FakeRepositoryCloner(repository)
+    task_service = TaskService()
+    task = task_service.create_task(
+        repository_url="https://github.com/owner/repository",
+        issue="Inspect the health function and verify its test",
+        test_command="pytest -q",
+    )
+
+    result = WorkflowService(task_service, repository_cloner=cloner).run(task.id)
+
+    assert result.task.status == "completed"
+    assert cloner.cloned_urls == ["https://github.com/owner/repository"]
+    assert cloner.cleaned_repositories == [repository]
+    assert result.tool_calls[0].tool_name == "clone_repository"
